@@ -1,0 +1,472 @@
+# **Spaceship Titanic - R Final Project**
+
+**Objective**:
+
+The year is 2912. The *Spaceship Titanic*, an interstellar passenger liner transporting 13,000 passengers has collided with a space-time anomaly while approaching it's first destination, *55 Cancri E*. Almost half of the passengers were transported to an alternate dimension, your mission if you choose to accept it, is to analyze the computer records to find out which passengers are missing.
+
+Info from Computer Systems:
+
+-   train.csv - has personal info of roughly 2/3rds of passengers; more importantly has a column ('Transported') with boolean value representing if passenger was transported or not. This is file that will reveal pattern of who was transported and why
+
+-   test.csv - has personal info of remaining passengers (roughly 1/3rd) and these are the passengers that pertain to our objective. We need to find out which of these passengers have been transported to an alternate dimension
+
+Data Notes:
+
+-   PassengerId - format is gggg-pp; where g is group number and p is number within group, usually members in same group are family members but not exclusively
+
+-   Cryosleep - if a passenger elected to be put in cryosleep they are confined to their cabins
+
+-   Cabin - represents where passenger is staying; deck/num/side where side is either Port or Starboard
+
+-   Transported - Boolean value representing if passenger was transported to alternate dimension
+
+**Solution:**
+
+So to begin I would just view the data to get familiar with what we're working with. Going to ignore test.csv for the moment because my first priority is to see if there's pattern of missing passengers
+
+```{r}
+passenger_base <- read_csv('train.csv')
+#View(passenger_base)
+
+```
+
+Now that know I what I'm looking at, I'm going to start narrowing down data because at the moment there's too many records to make any meaningful analysis. I'm going to start by filtering for only the passengers that we confirmed to have been transported.
+
+```{r}
+missing_passengers <- filter(passenger_base, Transported == TRUE)
+#View(missing_passengers)
+```
+
+Total passengers in train.csv : 8, 693
+
+Passengers transported : 4, 378
+
+Passengers not affected : 4, 315
+
+Some numbers from a first glance, almost 50/50 split between passengers who were transported and ones who weren't. Too early to put any significance to it, just want to get an idea of numbers we are working with. Next, I'm going to dive in and look at some of these columns to see if there is any pattern to the people who went missing. VIP, HomePlanet, Age, Cabin, CryoSleep, Destination are going to be my first areas of interest and we'll go from there.
+
+1.  **VIP - Did being a VIP have an affect on if someone was transported or not?**
+
+```{r}
+# finding amount of missing passengers that were VIPS
+missing_vip <- missing_passengers %>%
+    drop_na(VIP) %>%
+    count(VIP) %>%
+    mutate(percent_of_total = n / sum(n))
+
+missing_vip
+```
+
+Woah there, let's not get the pitchforks out yet but at the moment 98% of people who were transported were not VIPS, i smell an uprising waiting to happen but before we go full William Wallace lets see the total distribution of VIPS on the entire ship first
+
+```{r}
+# finding VIP breakdown among all the passengers on the ship
+ship_total_vip <- passenger_base %>%
+    drop_na(VIP) %>%
+    count(VIP) %>%
+    mutate(percent_of_total = n / sum(n))
+
+ship_total_vip
+```
+
+After looking at distribution of VIP's on the rest of the ship, I think we can see that the high percentage of non-VIPs we saw originally is in line with the distribution of VIPs on the rest of the ship. Both population distribution's are about 98% for non-VIPs. At this point unless new evidence comes to our attention, I think we can safely say being a VIP had no impact on if you were transported or not.
+
+2.  **HomePlanet - Maybe the space-time anomaly affected people from the same planet at higher rates than others?**
+
+    ```{r}
+    # finding HomePlanet breakdown among passengers who went missing
+    missing_planet_dist <- missing_passengers %>%
+        drop_na(HomePlanet) %>%
+        count(HomePlanet) %>%
+        mutate(percent_of_total = n / sum(n))
+
+    missing_planet_dist
+    ```
+
+Again need to compare to rest of the ship's passengers to see if anything sticks out
+
+```{r}
+# finding HomePlanet breakdown among the passengers on entire ship
+ship_planet_dist <- passenger_base %>%
+    drop_na(HomePlanet) %>%
+    count(HomePlanet) %>%
+    mutate(percent_of_total = n / sum(n))
+
+ship_planet_dist
+```
+
+So after comparing the two sets of distributions, I think it's safe to say it wasn't a conspiracy to target people from a specific planet. There are some discrepancies in distributions of Earth and Europa but not enough to by itself to make me poke around anymore in that direction. Earth had small decrease (8%) in population distribution relative to the entire ship where as Europa had a small increase (8%), Mars remained almost identical.
+
+3.  **Age - Maybe people of a certain age were affected more than others?**
+
+    ```{r}
+    # This first line changes the ages of kids 9 and below into accurate age bin, doesnt change the age permanently in the database but allows me to perform anaylsis accurately, before I put this line in a child that was 6 years old was getting grouped in the 60-69 age bin 
+
+    missing_passengers$Age[missing_passengers$Age < 10] <- 0
+
+    # breakdown of ages among the missing passengers, this tibble is grouped in age bins. 0 represents ages 0-9; 1 represents ages 10-19, etc.
+
+    missing_age_dist <- missing_passengers %>%
+        drop_na(Age) %>%
+        group_by(Age = substr(Age, 1, 1)) %>%
+        count(Age) %>%
+        mutate(percent_of_total = n / 4288) # 4288 = # of obs. - # of NA values
+
+    missing_age_dist
+    ```
+
+```{r}
+# Performing same age breakdown on the ship as a whole to see population distributions
+
+passenger_base$Age[passenger_base$Age < 10] <- 0
+
+ship_age_dist <- passenger_base %>%
+    drop_na(Age) %>%
+    group_by(Age = substr(Age, 1, 1)) %>%
+    count(Age) %>%
+    mutate(percent_of_total = n / 8514) #8514 = # of obs. - # of NA values
+
+ship_age_dist
+```
+
+```{r}
+# Now performing calculation to get age TPR and add it back as column into my tibble for the missing passengers sorted by ages 
+
+age_tpr <- missing_age_dist$n / ship_age_dist$n
+final_age_tpr <- tibble(age_tpr)
+
+missing_age_dist %>%
+    add_column(tpr = final_age_tpr$age_tpr)
+
+#At this point I reran the lines at the top to make sure my passenger_base and missing_passenger variables didn't have the replaced 0 value for children under 10 
+```
+
+So these results give us some interesting results even if it doesn't yield a definitive answer as to why certain passengers were transported. A somewhat terrifying piece of info if you are a mother but newborns were taken at a significantly higher rate than other passengers, 81% of the newborns (children under 1) were transported to an alternate dimension. Children as a whole were particularly at risk for some reason, on average 70% of passengers in age range of newborns to 12 year old's were transported, this is in contrast to all other age groups that hover around the standard 45-55% transportation rate. I'm not convinced that age is the predominant factor in why a passenger was transported, but the data about transportation rates in children has peaked my interest. Could it be they were all similarly located on the ship? Side note : Don't travel intergalatically if you're 59 years of age, out of the 35 of them on board 27 were transported, that's a 77% rate, an outlier but tad interesting.
+
+4.  **CryoSleep - Since Cryosleep passengers were contained to their cabins I'm curious to see what their transportation numbers look like**
+
+```{r}
+# looking at breakdown of cryosleepers among the missing passengers
+missing_cryosleepers <- missing_passengers %>%
+    drop_na(CryoSleep) %>%
+    count(CryoSleep) %>%
+    mutate(percent_of_total = n / sum(n))
+
+missing_cryosleepers
+```
+
+```{r}
+# looking at breakdown of cryosleepers among the whole ship
+ship_cryosleepers <- passenger_base %>%
+    drop_na(CryoSleep) %>%
+    count(CryoSleep) %>%
+    mutate(percent_of_total = n / sum(n))
+
+ship_cryosleepers
+```
+
+This is an interesting piece of data, very interesting indeed if you take into account the fact cryosleepers were contained to their cabin for entire duration of voyage. Now I'm going to find the TPR for cryosleepers to get some comparable numbers between the two
+
+```{r}
+# finding TPR and then adding value back into the tibble of missing cryosleepers
+cryo_tpr <- missing_cryosleepers$n / ship_cryosleepers$n
+final_cryo_tpr <- tibble(cryo_tpr)
+
+missing_cryosleepers %>%
+    add_column(tpr = final_cryo_tpr$cryo_tpr)
+
+```
+
+That's an extremely high TPR for passengers that elected to cryosleep compared to the ship on average, where you see somewhere around 45%-55% TPR for most categories. This is also the largest sample size where the TPR has been so high so a great piece of data. The TPR for children under 12 was interesting but I hesitate to ascribe too much meaning to it since the sample size was less than 1,000 where as this sub-population makes up roughly 35% of the entire train.csv file. Definitely going to circle back to this piece of data when I'm done looking at other columns.
+
+5.  **Destination - Was where the passenger headed, have any impact on transportation?**
+
+```{r}
+# finding breakdown of where missing passengers where headed on the ship
+missing_destin_dist <- missing_passengers %>%
+    drop_na(Destination) %>%
+    count(Destination) %>%
+    mutate(percent_of_total = n / sum(n))
+
+#missing_destin_dist
+
+# finding breakdown of destinations for the entire ship
+ship_destin_dist <- passenger_base %>%
+    drop_na(Destination) %>%
+    count(Destination) %>%
+    mutate(percent_of_total = n/sum(n))
+
+ship_destin_dist
+
+#finding the TPR for each destination and adding it as new column into tibble 
+dest_tpr <- missing_destin_dist$n / ship_destin_dist$n
+final_dest_tpr <- tibble(dest_tpr)
+
+missing_destin_dist %>%
+    add_column(tpr = final_dest_tpr$dest_tpr)
+
+```
+
+This query doesn't yield too much valuable analysis, passengers headed to *Cancri* did have higher TPR (Transportation Rate) than ship's average, having a 61% TPR, but nothing that gives anything conclusive about why they were sent to an alternate dimension as opposed to others. Most interesting thing thus far has been the young children and the CryoSleep passengers transporting at high rates but that still isn't enough. My gut tells me it has to do with the passengers location on the ship, maybe certain deck numbers or if they were on a certain side of the ship, so let's look there next.
+
+6.  **Cabin - Does location of passenger have impact on if they were transported?**
+
+    ```{r}
+    cabin_dist <- missing_passengers %>%
+        count(Cabin)
+
+    #View(cabin_dist)
+
+    # ^^^This query ended returning larger than needed output, too many cabin variations, need to group by different similarities
+
+    # Grouping by passenger's DECK first (A, B, C, etc.)
+    # Finding breakdown of missing passenger's deck first
+
+    missing_deck_breakdown <- missing_passengers %>%
+        drop_na(Cabin) %>%
+        group_by(Cabin = substr(Cabin, 1, 1)) %>%
+        count(Cabin)
+
+    #missing_deck_breakdown
+
+    # Now finding deck breakdown of passengers on the whole ship
+    ship_deck_breakdown <- passenger_base %>%
+        drop_na(Cabin) %>%
+        group_by(Cabin = substr(Cabin, 1, 1)) %>%
+        count(Cabin)
+
+    ship_deck_breakdown
+
+    ## Adding the newly found TPR stat as column back into tibble so I can work with it in ggplot
+
+    deck_tpr <- missing_deck_breakdown$n / ship_deck_breakdown$n
+    final_deck_tpr <- tibble(deck_tpr)
+
+    missing_deck_breakdown %>%
+        add_column(deck_tpr = final_deck_tpr$deck_tpr)
+
+
+    ## Made a graph and saved to use later for my presentation file
+
+    cabin_deck_graph <- ggplot(data = missing_deck_breakdown) +
+        geom_col(mapping = aes(x = Cabin, y = deck_tpr, fill = Cabin)) +
+        ylim(0, 1) +
+        labs(x = 'Cabin Deck', y = 'Deck TPR', title = 'Transportation Rate (TPR%) by Cabin Deck') + 
+        scale_fill_brewer(palette = "Spectral")
+
+    cabin_deck_graph
+
+    # Commented out line below so it doesn't save again when you run code
+
+    #ggsave('TPR by Cabin Deck.png', cabin_deck_graph, width = 5, height = 5, unit = 'in')
+
+
+    ```
+
+Cabin Decks B and C have an unusually higher than average TPR's. I hesitate to put too much meaning to it though because even though they are the 3rd and 4th largest deck on the ship, over 50% of ships passengers are on Decks F and G so the numbers don't all mean the same thing. I still find it interesting because it is large enough of a sample size to validate the analysis
+
+```{r}
+# Grouping by passengers LEVEL
+
+level_breakdown <- missing_passengers %>%
+    group_by(Cabin = substr(Cabin, 3, 3)) %>%
+    count(Cabin)
+
+level_breakdown
+
+total_level_breakdown <- passenger_base %>%
+    group_by(Cabin = substr(Cabin, 3, 3)) %>%
+    count(Cabin)
+
+#total_level_breakdown
+
+##^^THIS ISNT A GOOD QUERY BUT I LEFT BECAUSE YOU SAID YOU WANTED TO SEE EVERYTHING
+```
+
+I noticed after doing this query that levels were getting grouped wrong, my intention was to group levels by 100's, to see if there was anything of note. I didn't realize that at the time there were passengers on levels 1000+ so my Level 1 group was noticeably over-inflated. Also for example, someone on level 68 (which for my purposes would be level 068 aka level 0) were getting grouped in lower levels that intended. In example above the passenger would've been grouped in level 6 because that was the first integer. I'm going to filter the Cabin field on character length to get back accurate numbers for the different levels
+
+```{r}
+missing_level_0_passengers <- filter(missing_passengers, nchar(Cabin) < 7)
+count(missing_level_0_passengers)
+
+#Now I know accurate number of passengers who were on levels 1-99
+```
+
+```{r}
+lower_deck_passengers <- filter(missing_passengers, nchar(Cabin) >= 8)
+
+missing_lower_level_breakdown <- lower_deck_passengers %>%
+    group_by(Cabin = substr(Cabin, 3, 4)) %>%
+    count(Cabin)
+
+missing_lower_level_breakdown
+
+#There we go, now we have some accruate numbers to work with for amounts of missing people on lower levels
+
+```
+
+```{r}
+missing_main_levels <- filter(missing_passengers, nchar(Cabin) == 7)
+
+missing_main_levels_breakdown <- missing_main_levels %>%
+    group_by(Cabin = substr(Cabin, 3, 3)) %>%
+    count(Cabin)
+
+missing_main_levels_breakdown
+    
+```
+
+The counts from our three filtered tibbles should equal the number of missing passengers which 4,378:
+
+2,586 (levels 1-9 ) + 986 (levels 10+) + 706 (topside, level 0) +100 (missing Cabin numbers) = 4,378
+
+Now I'm going to compare level groupings of missing passengers to entire ship level distribution to see if there's a pattern
+
+```{r}
+# Starting with Level 0 (lLevels 1-99)
+
+ship_level_0_passengers <- filter(passenger_base, nchar(Cabin) < 7)
+
+level_0_tpr <- count(missing_level_0_passengers)/count(ship_level_0_passengers)
+level_0_tpr %>%
+    add_column(level_0_missing = as.double(count(missing_level_0_passengers))) %>%
+    add_column(level_0_total_passengers = as.double(count(ship_level_0_passengers)))
+
+# This shows the number of people who went missing on levels 1-99 compared to the total amount of passengers on that level, with the TPR included as well 
+    
+```
+
+```{r}
+# Now repeating process for levels 10 and over 
+ship_lower_level_passengers <- filter(passenger_base, nchar(Cabin) >= 8)
+
+ship_lower_level_breakdown <- ship_lower_level_passengers %>%
+    group_by(Cabin = substr(Cabin, 3, 4)) %>%
+    count(Cabin)
+```
+
+```{r}
+lower_level_tpr <- missing_lower_level_breakdown$n / ship_lower_level_breakdown$n
+final_lower_levels_tpr <- tibble(lower_level_tpr)
+
+missing_lower_level_breakdown %>%
+    add_column(total_passengers = ship_lower_level_breakdown$n) %>%
+    add_column(level_tpr = final_lower_levels_tpr$lower_level_tpr)
+
+# This gives tibble with missing passengers and total passengers for each lower level, as well as their TPR
+```
+
+\^\^ These are the Transportation Rates (TPR) for levels 10-18 \^\^, going to lastly look at main levels 1-9.
+
+```{r}
+ship_main_levels <- filter(passenger_base, nchar(Cabin) == 7)
+
+ship_main_levels_breakdown <- ship_main_levels %>%
+    group_by(Cabin = substr(Cabin, 3, 3)) %>%
+    count(Cabin)
+
+main_levels_tpr <- missing_main_levels_breakdown$n / ship_main_levels_breakdown$n
+final_main_levels_tpr <- tibble(main_levels_tpr)
+
+missing_main_levels_breakdown %>%
+    add_column(total_passengers = ship_main_levels_breakdown$n) %>%
+    add_column(level_tpr = final_main_levels_tpr$main_levels_tpr)
+
+```
+
+Alright well that took a while, but now we have TPR's for all levels from 1-18. At first glance I was beginning to think that the lower the level, the higher likelihood of being transported, because starting at level 4 you begin to see steady increases in the TPR until level 11 where it starts to drop again. The increase from level 4 to level 11 was roughly 30%, so a noticeable difference.
+
+I'm honestly starting to get stumped, I was starting to think the space-time anomaly the ship collided with could've been spherical shaped where the center mass hit the ship around (levels 8, 9 ,10) where you see the 60%+ TPR's; then as you travel further away from the origin point the TPR's would continuously diminish. That's reinforced with the bell curve like distribution from levels 4-14. That was the theory I got excited about until you notice spikes in the TPR in levels 0-3 relative to level 4. Since there are enough passengers on those levels it makes the data meaningful, you can't disregard it as possibly irrelevant like you can with levels 15-18 where the sample sizes are too small. Still is a vital piece of information in my opinion just need more information of cabin locations, and why levels 0-3 where exceptions to the rule.
+
+Going to lastly look at Starboard and Port side numbers to see if there's anything interesting, in relation to investigating the Cabin field
+
+```{r}
+# Finding the breakdown of Starboard and Port cabins among missing passengers
+missing_cabin_side_totals <- missing_passengers %>%
+    drop_na(Cabin) %>%
+    group_by(Cabin = str_sub(Cabin, -1, -1)) %>%
+    count(Cabin) %>%
+    mutate(percent_of_total = n / 4278)
+
+missing_cabin_side_totals
+
+# Finding Starboard/Port cabin breakdown of whole ship now
+
+ship_cabin_side_totals <- passenger_base %>%
+    drop_na(Cabin) %>%
+    group_by(Cabin = str_sub(Cabin, -1, -1)) %>%
+    count(Cabin) %>%
+    mutate(percent_of_total = n / 8494)
+    
+ship_cabin_side_totals
+
+cabin_side_tpr <- missing_cabin_side_totals$n/ship_cabin_side_totals$n
+cabin_side_tpr
+
+```
+
+Nothing too too interesting, could be more revealing in tandem with other evidence. 10% higher chance of being transported if you were staying on Starboard side of the ship rather than Port side.
+
+# \*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*
+
+I want to dive back into the kids under 12 having such a high TPR, going to look at different characteristics and see what i find
+
+```{r}
+# Finding which decks (A,B,C, etc.) the children under 12 where located
+missing_kids_deck_location <- missing_passengers %>%
+    drop_na(Cabin) %>%
+    filter(Age <= 12) %>%
+    group_by(Cabin = substr(Cabin,1,1)) %>%
+    count(Cabin)
+
+
+# Finding how many children under 12 were on each deck to begin with 
+ship_kids_deck_location <- passenger_base %>%
+    drop_na(Cabin) %>%
+    filter(Age <= 12) %>%
+    group_by(Cabin = substr(Cabin,1,1)) %>%
+    count(Cabin)
+
+
+# finding the TPR for each deck and adding values back into tibble
+kids_deck_tpr <- missing_kids_deck_location$n / ship_kids_deck_location$n
+final_kdeck_tpr <- tibble(kids_deck_tpr)
+
+missing_kids_deck_tpr <- missing_kids_deck_location %>%
+    add_column(total_kids_per_deck = ship_kids_deck_location$n) %>%
+    add_column(kids_deck_tpr = final_kdeck_tpr$kids_deck_tpr)
+
+missing_kids_deck_tpr
+
+# I have a visualization for this in the other file
+```
+
+At first glance this is really interesting, even though sample size is somewhat small I think its odd that the children that were located on Decks F and above had a 95% TPR, that's extremely high and with around 250 passengers included in that analysis I think it's something worth digging into further.
+
+```{r}
+## I saw alot of 'Mars' homeplanet while skimming through filtered data so ran a query seeing where the kids where from first
+the_chosen_ones <- missing_passengers %>%
+    drop_na(HomePlanet) %>%
+    filter(Age <=12) %>%
+    filter(substr(Cabin,1,1) != 'G') %>%
+    count(HomePlanet)
+
+the_chosen_ones
+
+#Give you % of transported kids that were from Mars
+kids_mars_share <- the_chosen_ones$n[3] / sum(the_chosen_ones$n)
+kids_mars_share
+
+#Gives you % of transported people that were from Mars
+total_missing_mars_share <- missing_planet_dist$n[3] / sum(missing_planet_dist$n)
+total_missing_mars_share
+
+
+# ^^ I included these queries in two pie graphs on attached file ^^
+```
+
+This is another interesting piece of data, Martians made up roughly 20% of the ships population, this was mirrored in the demographics of the missing passenger list as whole which also roughly 20%. While examining the transported children under age twelve though, Martians made up a staggering 75% of that subgroup. Why the discrepancy? Not sure yet but it is interesting.
+
+# \*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*\*
+
+I'm getting to the point where I'm not sure where else to look without more information. It's hard to get an idea of layout of ship without knowing positioning of the Decks and Levels. In sense that if a passenger was A/87/P and another was B/87/P would that represent they are sharing a ceiling/floor or are Decks A, B, C, D quadrants on same floor and then you have different levels within the decks. These are the types questions I would need answered before taking this any further, cause without knowing the exact positioning of the passengers it's hard to visualize a pattern. Also as I was going through this; people would be walking around and going about their business while traveling I would assume, so how are we to know exactly where they were on the ship when they hit the space-time anomaly (except for CryoSleep passengers) without some sort of GPS on the passenger. Who knows maybe that's where the machine learning part comes in, I'm curious how one actually would find the complete solution. But I'm struggling to find anymore aspects to analyze without being too redundant so I'm going to wrap up here; on an attached file I'll have a couple graphs of some interesting things I found as well as a little write up on things of note I found through the analysis.

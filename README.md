@@ -1,5 +1,6 @@
-# Spaceship_Titanic
-# TPR = Transportation Rate
+# Spaceship_Titanic EDA - this was a machine learning dataset from kaggle, but wanted to test R Studio data analysis tools like tidyverse and dpylr
+
+### TPR = Transportation Rate
 ^^this is used alot in my files^^ 
 
 .Rmd file contains all my queries and .pdf file is my presentation of findings. 
